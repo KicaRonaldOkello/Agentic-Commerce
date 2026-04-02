@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Catalog{% endblock %} · Agentic Commerce</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <header class="site-header">
+    <div class="inner">
+      <a class="logo" href="{{ url_for('catalog.index') }}">Agentic Commerce</a>
+      <nav class="nav">
+        <a href="{{ url_for('catalog.products', category='all') }}">All</a>
+        <a href="{{ url_for('catalog.products', category='phone') }}">Phones</a>
+        <a href="{{ url_for('catalog.products', category='television') }}">TVs</a>
+      </nav>
+    </div>
+  </header>
+  <main class="main">
+    {% block body %}{% endblock %}
+  </main>
+  <footer class="site-footer">
+    <div class="inner">Demo catalog · UGX prices · SQLite backend</div>
+  </footer>
+</body>
+</html>

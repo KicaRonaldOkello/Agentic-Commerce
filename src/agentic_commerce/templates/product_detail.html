@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}{{ product.name[:60] }}{% endblock %}
+{% block body %}
+<article class="detail">
+  <nav class="breadcrumb">
+    <a href="{{ url_for('catalog.products', category='all') }}">Products</a>
+    <span>/</span>
+    <a href="{{ url_for('catalog.products', category=product.product_type) }}">{{ product.product_type }}</a>
+  </nav>
+  <div class="detail-grid">
+    <div class="detail-gallery">
+      <img class="detail-hero" src="{{ product.thumbnail }}" alt="" width="640" height="640">
+      {% if product.images %}
+      <div class="detail-thumbs">
+        {% for url in product.images[:6] %}
+        <img src="{{ url }}" alt="" loading="lazy" width="120" height="120">
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    <div class="detail-info">
+      <p class="card-brand">{{ product.brand }} · {{ product.tier }}</p>
+      <h1 class="detail-title">{{ product.name }}</h1>
+      <p class="detail-price">
+        {{ product.price | ugx }}
+        {% if product.compare_at_price %}
+        <span class="compare">{{ product.compare_at_price | ugx }}</span>
+        {% endif %}
+      </p>
+      <p class="detail-rating">{{ product.rating_average }} ★ ({{ product.review_count }} reviews)</p>
+      <p class="detail-short">{{ product.short_description }}</p>
+      <section class="detail-section">
+        <h2>Description</h2>
+        <p class="detail-body">{{ product.description }}</p>
+      </section>
+      {% if product.key_features %}
+      <section class="detail-section">
+        <h2>Key features</h2>
+        <ul class="feature-list">
+          {% for line in product.key_features %}
+          <li>{{ line }}</li>
+          {% endfor %}
+        </ul>
+      </section>
+      {% endif %}
+      {% if product.specifications %}
+      <section class="detail-section">
+        <h2>Specifications</h2>
+        <dl class="spec-list">
+          {% for k, v in product.specifications.items() %}
+          <dt>{{ k }}</dt>
+          <dd>{{ v }}</dd>
+          {% endfor %}
+        </dl>
+      </section>
+      {% endif %}
+      {% if product.whats_in_box %}
+      <section class="detail-section">
+        <h2>What’s in the box</h2>
+        <ul class="feature-list">
+          {% for line in product.whats_in_box %}
+          <li>{{ line }}</li>
+          {% endfor %}
+        </ul>
+      </section>
+      {% endif %}
+    </div>
+  </div>
+</article>
+{% endblock %}

@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling>=1.23"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agentic-commerce"
+version = "0.1.0"
+description = "Agentic commerce demo: catalog data, SQLite loaders, Flask storefront."
+requires-python = ">=3.10"
+dependencies = [
+    "flask>=3,<4",
+]
+
+[project.scripts]
+serve-catalog = "agentic_commerce.cli:main"
+
+[dependency-groups]
+dev = [
+    "poethepoet>=0.31,<1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agentic_commerce"]
+
+[tool.poe.tasks]
+generate-products = "python scripts/generate_products_jsonl.py"
+load-sqlite = "python scripts/load_products_sqlite.py"
+load-sqlite-fresh = "python scripts/load_products_sqlite.py --recreate"
+clear-sqlite = "python scripts/clear_products_sqlite.py"
+clear-sqlite-drop = "python scripts/clear_products_sqlite.py --drop"
+serve = "flask --app agentic_commerce:create_app run --debug"

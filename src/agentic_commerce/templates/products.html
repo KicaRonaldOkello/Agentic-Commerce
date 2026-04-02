@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Products{% endblock %}
+{% block body %}
+<div class="toolbar">
+  <h1 class="page-title">Products</h1>
+  <form class="filters" method="get" action="{{ url_for('catalog.products') }}">
+    <label>
+      Category
+      <select name="category" onchange="this.form.submit()">
+        <option value="all" {% if category == 'all' %}selected{% endif %}>All</option>
+        <option value="phone" {% if category == 'phone' %}selected{% endif %}>Phones</option>
+        <option value="television" {% if category == 'television' %}selected{% endif %}>Televisions</option>
+      </select>
+    </label>
+    <label>
+      Per page
+      <select name="per_page" onchange="this.form.submit()">
+        {% for n in per_page_choices %}
+        <option value="{{ n }}" {% if n == per_page %}selected{% endif %}>{{ n }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <input type="hidden" name="page" value="1">
+    <noscript><button type="submit" class="btn small">Apply</button></noscript>
+  </form>
+</div>
+
+<p class="meta">{{ result.total }} items · page {{ result.page }} of {{ result.total_pages }}</p>
+
+{% if result.items %}
+<ul class="product-grid">
+  {% for p in result.items %}
+  <li class="product-card">
+    <a class="card-link" href="{{ url_for('catalog.product_detail', slug=p.slug) }}">
+      <div class="card-image">
+        <img src="{{ p.thumbnail }}" alt="" loading="lazy" width="400" height="400">
+      </div>
+      <div class="card-body">
+        <span class="card-brand">{{ p.brand }}</span>
+        <h2 class="card-title">{{ p.name }}</h2>
+        <p class="card-desc">{{ p.short_description[:140] }}{% if p.short_description|length > 140 %}…{% endif %}</p>
+        <div class="card-footer">
+          <span class="price">{{ p.price | ugx }}</span>
+          <span class="tier">{{ p.tier }}</span>
+        </div>
+      </div>
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+
+<nav class="pagination" aria-label="Pagination">
+  {% if result.has_prev %}
+  <a class="btn" rel="prev" href="{{ url_for('catalog.products', category=category, page=result.page - 1, per_page=per_page) }}">Previous</a>
+  {% else %}
+  <span class="btn disabled">Previous</span>
+  {% endif %}
+  <span class="page-indicator">{{ result.page }} / {{ result.total_pages }}</span>
+  {% if result.has_next %}
+  <a class="btn" rel="next" href="{{ url_for('catalog.products', category=category, page=result.page + 1, per_page=per_page) }}">Next</a>
+  {% else %}
+  <span class="btn disabled">Next</span>
+  {% endif %}
+</nav>
+{% else %}
+<p class="empty">No products in this view.</p>
+{% endif %}
+{% endblock %}

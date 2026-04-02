@@ -1,0 +1,28 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from flask import Flask
+
+from agentic_commerce.config import Config
+from agentic_commerce.routes import bp as catalog_bp
+
+
+def create_app(config_class: type = Config) -> Flask:
+    pkg_dir = Path(__file__).resolve().parent
+    app = Flask(
+        __name__,
+        template_folder=str(pkg_dir / "templates"),
+        static_folder=str(pkg_dir / "static"),
+        static_url_path="/static",
+    )
+    app.config.from_object(config_class)
+    app.register_blueprint(catalog_bp)
+
+    @app.template_filter("ugx")
+    def format_ugx(value: int | None) -> str:
+        if value is None:
+            return "—"
+        return f"UGX {int(value):,}"
+
+    return app
