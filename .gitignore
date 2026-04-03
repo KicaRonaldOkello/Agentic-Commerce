@@ -3,6 +3,8 @@ __pycache__/
 *.py[cod]
 .Python
 *.sqlite
+# Ship a demo DB for Vercel / CI (optional); build step can also create this file.
+!data/catalog.sqlite
 *.sqlite-journal
 *.sqlite-wal
 *.sqlite-shm

@@ -112,6 +112,14 @@ def main() -> int:
         action="store_true",
         help="Drop the products table before creating and loading (destructive).",
     )
+    parser.add_argument(
+        "--single-file",
+        action="store_true",
+        help=(
+            "After load, switch journal mode to DELETE and checkpoint WAL so the DB "
+            "is a single .sqlite file (better for read-only / serverless deploys)."
+        ),
+    )
     args = parser.parse_args()
 
     if not args.jsonl.is_file():
@@ -161,6 +169,11 @@ def main() -> int:
         cur.execute(f"SELECT COUNT(*) FROM {PRODUCTS_TABLE}")
         total = cur.fetchone()[0]
         print(f"Loaded {len(rows)} rows into {args.db} (table {PRODUCTS_TABLE}, total {total}).")
+
+        if args.single_file:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+            conn.execute("PRAGMA journal_mode=DELETE;")
+            conn.commit()
     finally:
         conn.close()
 

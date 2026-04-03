@@ -29,6 +29,10 @@ dev = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/agentic_commerce"]
 
+# Runs after ``pip install`` on Vercel — creates ``data/catalog.sqlite`` (not in git).
+[tool.vercel.scripts]
+build = "python scripts/load_products_sqlite.py --recreate --single-file"
+
 [tool.poe.tasks]
 generate-products = "python scripts/generate_products_jsonl.py"
 load-sqlite = "python scripts/load_products_sqlite.py"
