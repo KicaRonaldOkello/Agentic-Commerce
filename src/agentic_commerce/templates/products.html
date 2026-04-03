@@ -16,6 +16,9 @@
         <option value="all" {% if category == 'all' %}selected{% endif %}>All</option>
         <option value="phone" {% if category == 'phone' %}selected{% endif %}>Phones</option>
         <option value="television" {% if category == 'television' %}selected{% endif %}>Televisions</option>
+        <option value="earphones" {% if category == 'earphones' %}selected{% endif %}>Earphones</option>
+        <option value="power_bank" {% if category == 'power_bank' %}selected{% endif %}>Power banks</option>
+        <option value="soundbar" {% if category == 'soundbar' %}selected{% endif %}>Soundbars</option>
       </select>
     </label>
     <label>
@@ -34,6 +37,10 @@
     <label>
       Max price (UGX)
       <input type="number" name="price_max" min="0" step="1" placeholder="Any" value="{{ price_max if price_max is not none else '' }}">
+    </label>
+    <label title="Matches integer inch bucket only (e.g. 5.6 → all 5.x″); products without size omitted.">
+      Screen (diagonal ″)
+      <input type="number" name="screen_inches" min="0" step="0.1" placeholder="Any" value="{{ screen_inches if screen_inches is defined and screen_inches is not none else '' }}">
     </label>
     <label class="filter-span-2">
       Brand contains

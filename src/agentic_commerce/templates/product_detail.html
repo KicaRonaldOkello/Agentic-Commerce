@@ -1,11 +1,18 @@
 {% extends "base.html" %}
+{% set type_labels = {
+  'phone': 'Phones',
+  'television': 'TVs',
+  'earphones': 'Earphones',
+  'power_bank': 'Power banks',
+  'soundbar': 'Soundbars',
+} %}
 {% block title %}{{ product.name[:60] }}{% endblock %}
 {% block body %}
 <article class="detail">
   <nav class="breadcrumb">
     <a href="{{ url_for('catalog.products', category='all') }}">Products</a>
     <span>/</span>
-    <a href="{{ url_for('catalog.products', category=product.product_type) }}">{{ product.product_type }}</a>
+    <a href="{{ url_for('catalog.products', category=product.product_type) }}">{{ type_labels.get(product.product_type, product.product_type|replace('_', ' ')|title) }}</a>
   </nav>
   <div class="detail-grid">
     <div class="detail-gallery">
@@ -28,6 +35,9 @@
         {% endif %}
       </p>
       <p class="detail-rating">{{ product.rating_average }} ★ ({{ product.review_count }} reviews)</p>
+      {% if product.screen_diagonal_inches is not none %}
+      <p class="detail-screen">Screen: {{ product.screen_diagonal_inches }}″ diagonal</p>
+      {% endif %}
       <p class="detail-short">{{ product.short_description }}</p>
       <section class="detail-section">
         <h2>Description</h2>

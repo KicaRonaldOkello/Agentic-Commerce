@@ -3,11 +3,14 @@
 {% block body %}
 <section class="hero">
   <h1>Browse the catalog</h1>
-  <p>Choose a category to see phones and televisions with pagination.</p>
+  <p>Choose a category to browse phones, TVs, and complementary accessories with pagination.</p>
   <div class="hero-actions">
     <a class="btn primary" href="{{ url_for('catalog.products', category='all') }}">All products</a>
     <a class="btn" href="{{ url_for('catalog.products', category='phone') }}">Phones</a>
     <a class="btn" href="{{ url_for('catalog.products', category='television') }}">Televisions</a>
+    <a class="btn" href="{{ url_for('catalog.products', category='earphones') }}">Earphones</a>
+    <a class="btn" href="{{ url_for('catalog.products', category='power_bank') }}">Power banks</a>
+    <a class="btn" href="{{ url_for('catalog.products', category='soundbar') }}">Soundbars</a>
     <a class="btn" href="{{ url_for('catalog.deals') }}">Best deals</a>
     <a class="btn" href="{{ url_for('catalog.assistant_page') }}">Assistant</a>
   </div>

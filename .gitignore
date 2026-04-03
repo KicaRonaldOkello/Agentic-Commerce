@@ -7,3 +7,5 @@ __pycache__/
 *.sqlite-wal
 *.sqlite-shm
 .env
+# Local Chroma persistence (Phase 2 RAG)
+data/chroma_db/

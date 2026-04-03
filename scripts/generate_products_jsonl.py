@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Generate data/products.jsonl:
-  - 1000 phones + 1000 TVs (same uniform schema for one DB)
+  - 1000 phones + 1000 TVs + 200 earphones + 200 power banks + 200 soundbars (one DB schema)
   - Per category: 40% low / 30% mid / 30% high tier
   - 900 unique listings + 100 duplicate-style rows (~10%) per category
 Images: Unsplash (images.unsplash.com) + Picsum (picsum.photos) — frontend-safe HTTPS URLs.
@@ -91,6 +91,20 @@ TV_UNSPLASH_IDS = [
     "1586023492125-27b2c245efd0",
 ]
 
+EARPHONE_UNSPLASH_IDS = [
+    "1505740420923-5e425e039951",
+    "1484704849702-f7830c1cb218",
+    "1572569511124-70250378a5a9",
+    "1590658084276-b8837314cbbf",
+] + list(PHONE_UNSPLASH_IDS[:16])
+
+POWER_UNSPLASH_IDS = list(PHONE_UNSPLASH_IDS[5:]) + list(PHONE_UNSPLASH_IDS[:15])
+
+SOUNDBAR_UNSPLASH_IDS = list(TV_UNSPLASH_IDS) + [
+    "1545121704-500a6c57037a",
+    "1470225623310-d73123c84fa2",
+]
+
 
 def unsplash_url(photo_id: str, w: int = 800, h: int = 800) -> str:
     return (
@@ -108,6 +122,12 @@ def picsum_url(seed: int, w: int = 800, h: int = 600) -> str:
 def image_set_for_product(kind: str, idx: int) -> tuple[str, list[str]]:
     if kind == "phone":
         pool = PHONE_UNSPLASH_IDS
+    elif kind == "earphone":
+        pool = EARPHONE_UNSPLASH_IDS
+    elif kind == "power":
+        pool = POWER_UNSPLASH_IDS
+    elif kind == "soundbar":
+        pool = SOUNDBAR_UNSPLASH_IDS
     else:
         pool = TV_UNSPLASH_IDS
     a = pool[idx % len(pool)]
@@ -145,6 +165,24 @@ TV_BRANDS = {
     "low": ["Bravo", "Vitron", "Syinix", "Sayona", "ARMCO", "Noble", "Crown", "Icon"],
     "mid": ["TCL", "Hisense", "Skyworth", "LG", "Samsung", "Haier", "Panasonic", "Sharp"],
     "high": ["Samsung", "LG", "Sony", "Philips", "TCL", "Hisense", "Panasonic", "Bang Olufsen"],
+}
+
+EARPHONE_BRANDS = {
+    "low": ["Oraimo", "Zealot", "Promate", "Ugreen", "Baseus", "Syinix", "Itel", "Realme"],
+    "mid": ["JBL", "Sony", "Soundcore", "Edifier", "Skullcandy", "Huawei", "OnePlus", "Xiaomi"],
+    "high": ["Apple", "Sony", "Bose", "Samsung", "Sennheiser", "Beats", "Google", "Shure"],
+}
+
+POWER_BANK_BRANDS = {
+    "low": ["Oraimo", "Romoss", "Itel", "Syinix", "Yoobao", "Havit", "Orico", "Tronsmart"],
+    "mid": ["Anker", "Xiaomi", "Baseus", "Ugreen", "Samsung", "Realme", "Huawei", "OnePlus"],
+    "high": ["Anker", "Zendure", "Sharge", "UGREEN", "Samsung", "Hyper", "CUKTECH", "EcoFlow"],
+}
+
+SOUNDBAR_BRANDS = {
+    "low": ["Bravo", "Vitron", "Syinix", "Sayona", "ARMCO", "Noble", "Crown", "Icon"],
+    "mid": ["JBL", "Samsung", "LG", "Sony", "Hisense", "Xiaomi", "TCL", "Panasonic"],
+    "high": ["Samsung", "LG", "Sony", "Bose", "Sonos", "Bang Olufsen", "Sennheiser", "Philips"],
 }
 
 PHONE_SERIES_LOW = ["POP", "Spark", "A", "C", "Go", "Y", "Neo", "Lite"]
@@ -605,6 +643,42 @@ def ugx_price_tv(tier: str, seed: int) -> tuple[int, int | None]:
     return base, compare
 
 
+def ugx_price_earphone(tier: str, seed: int) -> tuple[int, int | None]:
+    r = random.Random(seed)
+    if tier == "low":
+        base = r.randint(35_000, 195_000)
+    elif tier == "mid":
+        base = r.randint(175_000, 540_000)
+    else:
+        base = r.randint(430_000, 2_250_000)
+    compare = int(base * r.uniform(1.05, 1.16)) if r.random() > 0.28 else None
+    return base, compare
+
+
+def ugx_price_power_bank(tier: str, seed: int) -> tuple[int, int | None]:
+    r = random.Random(seed)
+    if tier == "low":
+        base = r.randint(42_000, 155_000)
+    elif tier == "mid":
+        base = r.randint(98_000, 320_000)
+    else:
+        base = r.randint(250_000, 740_000)
+    compare = int(base * r.uniform(1.04, 1.14)) if r.random() > 0.32 else None
+    return base, compare
+
+
+def ugx_price_soundbar(tier: str, seed: int) -> tuple[int, int | None]:
+    r = random.Random(seed)
+    if tier == "low":
+        base = r.randint(118_000, 440_000)
+    elif tier == "mid":
+        base = r.randint(330_000, 1_020_000)
+    else:
+        base = r.randint(780_000, 3_800_000)
+    compare = int(base * r.uniform(1.04, 1.15)) if r.random() > 0.3 else None
+    return base, compare
+
+
 def build_phone(i: int, tier: str) -> dict[str, Any]:
     r = random.Random(i * 7919 + hash(tier) % 10000)
     brand = r.choice(PHONE_BRANDS[tier])
@@ -785,6 +859,315 @@ def build_tv(i: int, tier: str) -> dict[str, Any]:
     }
 
 
+def build_earphone(i: int, tier: str) -> dict[str, Any]:
+    r = random.Random(i * 14009 + hash("ear") % 10000)
+    brand = r.choice(EARPHONE_BRANDS[tier])
+    if tier == "low":
+        form = r.choice(["True Wireless", "Neckband", "Wired in-ear"])
+        anc = False
+        codec = r.choice(["SBC", "AAC"])
+        batt_h = r.randint(4, 22)
+        driver = r.choice(["10mm dynamic", "12mm drivers", "6mm drivers"])
+    elif tier == "mid":
+        form = r.choice(["True Wireless", "On-Ear Wireless", "Neckband"])
+        anc = r.choice([True, False])
+        codec = r.choice(["AAC", "aptX", "LC3"])
+        batt_h = r.randint(18, 36)
+        driver = r.choice(["11mm bio-cellulose", "12mm titanium", "10mm dual"])
+    else:
+        form = r.choice(["True Wireless Pro", "Over-Ear Wireless", "True Wireless"])
+        anc = True
+        codec = r.choice(["AAC", "LDAC", "aptX Adaptive", "Spatial audio"])
+        batt_h = r.randint(24, 48)
+        driver = r.choice(["11mm planar", "12mm multi-driver", "custom-tuned dynamic"])
+
+    color = r.choice(COLORS)
+    model = f"{r.choice(['Air', 'Buds', 'Tune', 'Live', 'Free', 'Flex', 'Wave', 'Sonic'])}{r.randint(1, 999)}"
+    anc_tag = " ANC" if anc else ""
+    name = f"{brand} {model} — {form}{anc_tag}, {codec}, {color}"
+    sku = f"EAR-{sku_safe_brand(brand)}-{tier[0].upper()}-{i:05d}"
+    pid = f"prod_earphones_{uuid.uuid4().hex[:12]}"
+    price, compare = ugx_price_earphone(tier, i + 901)
+
+    short = (
+        f"{brand} {model}: {form.lower()} earphones for phones and tablets — "
+        f"{codec}, up to ~{batt_h}h playback story, {color}. Jumia-style bundle; verify warranty with seller."
+    )
+    desc = (
+        f"Pairs with smartphones for music, calls, and mobile gaming. "
+        f"{'Active noise cancellation for commute and open-office use. ' if anc else ''}"
+        f"Battery endurance varies by volume and codec; case adds extra top-ups on true wireless SKUs. "
+        f"Check whether USB-C cable or spare tips ship in your listing. "
+        f"Driver story: {driver}. Tier {tier} positioning vs import flagships."
+    )
+    kf = [
+        f"{form} — comfortable for daily phone use",
+        f"Codec support: {codec} (device dependent)",
+        f"Battery / playback story: up to ~{batt_h}h (manufacturer conditions)",
+        "Built-in mics for calls and voice assistants where supported",
+        f"Finish: {color}",
+        "Complements smartphones — check Bluetooth version on your handset",
+    ]
+    if anc:
+        kf.insert(2, "Active noise cancellation — reduces ambient rumble on supported modes")
+
+    specs = {
+        "formFactor": form,
+        "connectivity": "Bluetooth 5.x on wireless SKUs; 3.5mm on wired variants",
+        "codec": codec,
+        "driver": driver,
+        "batteryHoursRated": batt_h,
+        "activeNoiseCancelling": anc,
+        "color": color,
+        "waterResistance": r.choice(["IPX4 splash", "IPX5 sweat", "Not rated", "IP54"]),
+    }
+
+    thumb, imgs = image_set_for_product("earphone", i)
+    return {
+        "id": pid,
+        "sku": sku,
+        "name": name,
+        "slug": slugify(name) + f"-ear-{i}",
+        "brand": brand,
+        "category": "electronics",
+        "productType": "earphones",
+        "tier": tier,
+        "currency": "UGX",
+        "price": price,
+        "compareAtPrice": compare,
+        "stockQuantity": r.randint(0, 220),
+        "availabilityStatus": r.choice(["in_stock"] * 8 + ["low_stock", "out_of_stock"]),
+        "ratingAverage": round(r.uniform(3.5, 4.9), 1),
+        "reviewCount": r.randint(0, 3200),
+        "shortDescription": short,
+        "description": desc,
+        "keyFeatures": kf,
+        "specifications": specs,
+        "whatsInTheBox": _pick(
+            r,
+            [
+                "Earphones / earbuds",
+                "Charging case (true wireless SKUs)",
+                "USB-C charging cable",
+                "Extra eartips (sizes vary)",
+                "Quick start guide",
+            ],
+            4,
+        ),
+        "attributes": {
+            "formFactor": form,
+            "codec": codec,
+            "color": color,
+            "tier": tier,
+            "complementsProductType": "phone",
+        },
+        "thumbnail": thumb,
+        "images": imgs,
+        "imageAttribution": "Unsplash (unsplash.com) and Lorem Picsum (picsum.photos); replace with licensed assets for production.",
+        "isDuplicateListing": False,
+    }
+
+
+def build_power_bank(i: int, tier: str) -> dict[str, Any]:
+    r = random.Random(i * 15107 + hash("pwr") % 10000)
+    brand = r.choice(POWER_BANK_BRANDS[tier])
+    if tier == "low":
+        mah = r.choice([5000, 10000, 10000])
+        pd_w = r.choice([10, 12, 15, 18])
+        ports_c = r.choice([0, 1])
+        ports_a = r.choice([1, 2])
+    elif tier == "mid":
+        mah = r.choice([10000, 20000, 20000])
+        pd_w = r.choice([18, 20, 22, 30])
+        ports_c = r.choice([1, 1, 2])
+        ports_a = r.choice([1, 2])
+    else:
+        mah = r.choice([20000, 27000, 25600, 30000])
+        pd_w = r.choice([30, 45, 65, 100])
+        ports_c = r.choice([1, 2, 2])
+        ports_a = r.choice([1, 2])
+
+    color = r.choice(["Black", "White", "Silver", "Blue", "Green"])
+    series = r.choice(["MagGo", "PowerLine", "Pocket", "Prime", "Hyper", "Tank", "Sprint", "Bolt"])
+    name = f"{brand} {series} {mah}mAh — {pd_w}W PD, USB-C×{ports_c}+USB-A×{ports_a}, {color}"
+    sku = f"PWR-{sku_safe_brand(brand)}-{tier[0].upper()}-{i:05d}-{mah}"
+    pid = f"prod_power_bank_{uuid.uuid4().hex[:12]}"
+    price, compare = ugx_price_power_bank(tier, i + 702)
+
+    short = (
+        f"{brand} power bank {mah}mAh — USB-C PD up to {pd_w}W, ideal backup for phones and small tablets. "
+        f"Verify airline limits for very high capacities on international flights."
+    )
+    desc = (
+        f"Portable charging for smartphones: top up during travel, outages, or long shoot days. "
+        f"{mah}mAh class matches Jumia listings that stress ‘fast charge’ and multi-port sharing. "
+        f"Pass-through charging support varies by SKU—read the PDP. "
+        f"Use a quality cable rated for the advertised wattage."
+    )
+    kf = [
+        f"{mah}mAh rated capacity — phone recharge count varies by handset battery",
+        f"USB-C PD up to {pd_w}W on supported ports (cable + phone must negotiate)",
+        f"Outputs: USB-C ×{ports_c}, USB-A ×{ports_a}",
+        "LED or display charge indicator on many SKUs",
+        f"Colorway: {color}",
+        "Fits bags and pockets — check thickness in listing photos",
+    ]
+
+    specs = {
+        "capacityMah": mah,
+        "pdWattsMax": pd_w,
+        "usbCPorts": ports_c,
+        "usbAPorts": ports_a,
+        "color": color,
+        "airlineNote": "Confirm mAh / Wh limits with carrier for large banks",
+    }
+
+    thumb, imgs = image_set_for_product("power", i)
+    return {
+        "id": pid,
+        "sku": sku,
+        "name": name,
+        "slug": slugify(name) + f"-pwr-{i}",
+        "brand": brand,
+        "category": "electronics",
+        "productType": "power_bank",
+        "tier": tier,
+        "currency": "UGX",
+        "price": price,
+        "compareAtPrice": compare,
+        "stockQuantity": r.randint(0, 200),
+        "availabilityStatus": r.choice(["in_stock"] * 8 + ["low_stock", "out_of_stock"]),
+        "ratingAverage": round(r.uniform(3.4, 4.85), 1),
+        "reviewCount": r.randint(0, 4100),
+        "shortDescription": short,
+        "description": desc,
+        "keyFeatures": kf,
+        "specifications": specs,
+        "whatsInTheBox": _pick(
+            r,
+            [
+                "Power bank unit",
+                "USB-C cable (length varies)",
+                "User manual",
+                "Pouch (select sellers)",
+            ],
+            3,
+        ),
+        "attributes": {
+            "capacityMah": mah,
+            "pdWattsMax": pd_w,
+            "color": color,
+            "tier": tier,
+            "complementsProductType": "phone",
+        },
+        "thumbnail": thumb,
+        "images": imgs,
+        "imageAttribution": "Unsplash (unsplash.com) and Lorem Picsum (picsum.photos); replace with licensed assets for production.",
+        "isDuplicateListing": False,
+    }
+
+
+def build_soundbar(i: int, tier: str) -> dict[str, Any]:
+    r = random.Random(i * 16301 + hash("sbr") % 10000)
+    brand = r.choice(SOUNDBAR_BRANDS[tier])
+    if tier == "low":
+        ch = r.choice(["2.0", "2.0", "2.1"])
+        watts = r.randint(40, 120)
+        sub = ch == "2.1"
+        hdmi_arc = r.choice([True, False])
+        smart = r.choice(["Bluetooth only", "Bluetooth + USB playback"])
+    elif tier == "mid":
+        ch = r.choice(["2.1", "3.1", "2.1"])
+        watts = r.randint(120, 320)
+        sub = True
+        hdmi_arc = True
+        smart = r.choice(["HDMI ARC", "HDMI ARC + optical", "Bluetooth 5 + ARC"])
+    else:
+        ch = r.choice(["3.1", "5.1", "5.1.2", "3.1.2"])
+        watts = r.randint(280, 800)
+        sub = True
+        hdmi_arc = True
+        smart = r.choice(["HDMI eARC", "eARC + Dolby Atmos story", "eARC + multi-room"])
+
+    color = r.choice(["Black", "Graphite", "Silver"])
+    line = r.choice(["Cinema", "Pulse", "Arc", "Beam-class", "Stage", "Arena", "Studio"])
+    name = f'{brand} {line} {ch} Soundbar — {watts}W class, {smart}, {color}'
+    sku = f"SBR-{sku_safe_brand(brand)}-{tier[0].upper()}-{i:05d}"
+    pid = f"prod_soundbar_{uuid.uuid4().hex[:12]}"
+    price, compare = ugx_price_soundbar(tier, i + 503)
+
+    short = (
+        f"{brand} {line} soundbar for TVs — {ch} channel layout, ~{watts}W marketing class. "
+        f"Upgrade built-in TV speakers with clearer dialogue and stronger bass where a sub is included."
+    )
+    desc = (
+        f"Designed to pair with televisions in living rooms and bedrooms. "
+        f"{'Wireless subwoofer on supported 2.1/5.1 kits—check listing photos. ' if sub else ''}"
+        f"HDMI ARC/eARC simplifies one-remote volume on compatible TVs. "
+        f"Streaming apps still play from the TV; the soundbar handles audio output. "
+        f"Wall-mount brackets may be optional—confirm in the box list."
+    )
+    kf = [
+        f"{ch} channel configuration — matches soundbar + optional sub bundles",
+        f"~{watts}W total system power (manufacturer claim)",
+        smart,
+        "Dialogue enhancement / night mode on select SKUs",
+        f"Finish: {color}",
+        "Pairs with TVs via HDMI ARC/eARC or optical on supported models",
+    ]
+
+    specs = {
+        "channels": ch,
+        "totalWattsClass": watts,
+        "wirelessSubwoofer": sub,
+        "hdmiArcOrEarc": hdmi_arc,
+        "connectivity": smart,
+        "color": color,
+        "tvPairing": "HDMI ARC / eARC / optical / Bluetooth aux",
+    }
+
+    thumb, imgs = image_set_for_product("soundbar", i)
+    return {
+        "id": pid,
+        "sku": sku,
+        "name": name,
+        "slug": slugify(name) + f"-sbr-{i}",
+        "brand": brand,
+        "category": "electronics",
+        "productType": "soundbar",
+        "tier": tier,
+        "currency": "UGX",
+        "price": price,
+        "compareAtPrice": compare,
+        "stockQuantity": r.randint(0, 85),
+        "availabilityStatus": r.choice(["in_stock"] * 8 + ["low_stock", "out_of_stock"]),
+        "ratingAverage": round(r.uniform(3.4, 4.92), 1),
+        "reviewCount": r.randint(0, 2100),
+        "shortDescription": short,
+        "description": desc,
+        "keyFeatures": kf,
+        "specifications": specs,
+        "whatsInTheBox": [
+            "Soundbar main unit",
+            "Remote control",
+            "Power cable",
+            "Wall-mount kit (where seller includes)",
+            "HDMI or optical cable (varies—read PDP)",
+        ],
+        "attributes": {
+            "channels": ch,
+            "totalWattsClass": watts,
+            "color": color,
+            "tier": tier,
+            "complementsProductType": "television",
+        },
+        "thumbnail": thumb,
+        "images": imgs,
+        "imageAttribution": "Unsplash (unsplash.com) and Lorem Picsum (picsum.photos); replace with licensed assets for production.",
+        "isDuplicateListing": False,
+    }
+
+
 def add_duplicate_listings(products: list[dict[str, Any]], target_total: int) -> list[dict[str, Any]]:
     """Append duplicate-style rows until len == target_total (same payload, new id/sku/slug)."""
     base = list(products)
@@ -808,6 +1191,8 @@ def add_duplicate_listings(products: list[dict[str, Any]], target_total: int) ->
 def main() -> None:
     unique_per_category = 900
     target_per_category = 1000
+    accessory_unique = 180
+    accessory_target = 200
 
     phones = [
         build_phone(i, tier_for_index(i, unique_per_category)) for i in range(unique_per_category)
@@ -817,7 +1202,20 @@ def main() -> None:
     phones = add_duplicate_listings(phones, target_per_category)
     tvs = add_duplicate_listings(tvs, target_per_category)
 
-    all_rows = phones + tvs
+    earphones = [
+        build_earphone(i, tier_for_index(i, accessory_unique)) for i in range(accessory_unique)
+    ]
+    power_banks = [
+        build_power_bank(i, tier_for_index(i, accessory_unique)) for i in range(accessory_unique)
+    ]
+    soundbars = [
+        build_soundbar(i, tier_for_index(i, accessory_unique)) for i in range(accessory_unique)
+    ]
+    earphones = add_duplicate_listings(earphones, accessory_target)
+    power_banks = add_duplicate_listings(power_banks, accessory_target)
+    soundbars = add_duplicate_listings(soundbars, accessory_target)
+
+    all_rows = phones + tvs + earphones + power_banks + soundbars
     root = Path(__file__).resolve().parent.parent
     out_path = root / "data" / "products.jsonl"
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -826,7 +1224,10 @@ def main() -> None:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
     print(f"Wrote {len(all_rows)} lines to {out_path}")
-    print(f"Phones: {len(phones)}, TVs: {len(tvs)}")
+    print(
+        f"Phones: {len(phones)}, TVs: {len(tvs)}, "
+        f"Earphones: {len(earphones)}, Power banks: {len(power_banks)}, Soundbars: {len(soundbars)}"
+    )
 
 
 if __name__ == "__main__":

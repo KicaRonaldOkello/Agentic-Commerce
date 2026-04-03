@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Agentic commerce demo: catalog data, SQLite loaders, Flask storefront."
 requires-python = ">=3.10"
 dependencies = [
+    "chromadb>=1.5.5",
     "flask>=3,<4",
     "langchain-core>=1.2.25",
     "langchain-openai>=1.1.12",
@@ -33,3 +34,4 @@ load-sqlite-fresh = "python scripts/load_products_sqlite.py --recreate"
 clear-sqlite = "python scripts/clear_products_sqlite.py"
 clear-sqlite-drop = "python scripts/clear_products_sqlite.py --drop"
 serve = "flask --app agentic_commerce:create_app run --debug"
+embed-chroma = "python scripts/embed_catalog_chroma.py"

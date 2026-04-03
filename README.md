@@ -147,19 +147,20 @@ Open [http://127.0.0.1:5000/](http://127.0.0.1:5000/) in a browser. For producti
 |--------|------|---------|
 | GET | `/api/products` | Paginated list; query params mirror the browse filters (`category`, `price_min`, `price_max`, `tier`, `brand`, `q`, `sort`, `page`, `per_page`, `in_stock_only`). |
 | GET | `/api/products/<id or slug>` | One product; tries `id` first, then `slug`. |
-| POST | `/api/chat` | Phase 1 assistant: JSON `{ "message": "...", "thread_id": "optional-uuid" }` → `{ "thread_id", "reply" }`. Requires `OPENAI_API_KEY`. |
+| POST | `/api/chat` | Assistant: JSON `{ "message": "...", "thread_id": "optional-uuid" }` → `{ "thread_id", "reply", "products" }`. Requires `OPENAI_API_KEY`. |
 
 ### Shopping assistant (LangGraph + OpenAI)
 
 1. Set **`OPENAI_API_KEY`** in the environment and restart the server.
 2. Open **`/assistant`** in the browser (also linked from the header).
 3. Optional: **`OPENAI_MODEL`** (default `gpt-4o-mini`), **`OPENAI_BASE_URL`** (e.g. later for OpenRouter: `https://openrouter.ai/api/v1`).
+4. **Semantic discovery (Phase 2):** after loading SQLite, build the Chroma index once: **`uv run python scripts/embed_catalog_chroma.py`** (or `uv run poe embed-chroma`). Uses the same **`OPENAI_API_KEY`** and writes under **`data/chroma_db/`** (see **`CHROMA_PATH`** / **`OPENAI_EMBEDDING_MODEL`** in `config.py`). Without this, the **`discover_catalog`** tool returns an error and the model should fall back to **`search_catalog`**.
 
-The agent is a **LangGraph** `create_react_agent` graph with tools: `search_catalog`, `get_product_details`, `top_deals` (see `src/agentic_commerce/chat_tools.py`). Conversation memory uses **`thread_id`** (stored in `localStorage` on the assistant page).
+The assistant uses a **Phase 3 LangGraph** parent graph (`shopping_phase3_graph.py`): a **router** sends each turn to **clarify**, **browse**, **deals**, or **compare**; each branch runs a focused **`create_react_agent`** subgraph with a subset of tools (`chat_tools.py`: `BROWSE_TOOLS`, `DEALS_TOOLS`, `COMPARE_TOOLS`). An **evaluator** step in `POST /api/chat` blocks non-shopping requests before the graph runs. Conversation memory uses **`thread_id`** (`MemorySaver`; stored in `localStorage` on `/assistant`).
 
 ## Roadmap (Phases 2+)
 
-Further work (RAG discovery, richer LangGraph nodes, complements): **[docs/SHOPPING_ASSISTANT_ROADMAP.md](docs/SHOPPING_ASSISTANT_ROADMAP.md)**.
+Further work (complements, evals, richer state): **[docs/SHOPPING_ASSISTANT_ROADMAP.md](docs/SHOPPING_ASSISTANT_ROADMAP.md)**.
 
 ## Project layout (short)
 
@@ -167,7 +168,8 @@ Further work (RAG discovery, richer LangGraph nodes, complements): **[docs/SHOPP
 |------|------|
 | `data/products.jsonl` | Source catalog (JSON Lines) |
 | `data/catalog.sqlite` | SQLite DB used at runtime |
-| `scripts/load_products_sqlite.py` | Create schema + load JSONL |
+| `scripts/load_products_sqlite.py` | Create schema + load JSONL (`--recreate` after schema changes, e.g. `screen_diagonal_inches`) |
+| `scripts/embed_catalog_chroma.py` | Phase 2: embed catalog into local Chroma (`data/chroma_db/`) |
 | `scripts/sqlite_products_schema.py` | Table DDL shared by loaders |
 | `src/agentic_commerce/` | Flask app, catalog + API + assistant (`chat_agent.py`, `chat_tools.py`) |
 | `docs/SHOPPING_ASSISTANT_ROADMAP.md` | Phased plan for the shopping chatbot |

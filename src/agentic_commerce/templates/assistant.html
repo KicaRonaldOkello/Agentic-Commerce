@@ -75,7 +75,15 @@
     logEl.scrollTop = logEl.scrollHeight;
   }
 
-  function appendAssistantReply(text, products) {
+  function appendComplementInviteBlock(text) {
+    const box = document.createElement("div");
+    box.className = "complement-invite";
+    box.setAttribute("role", "note");
+    box.textContent = text;
+    return box;
+  }
+
+  function appendAssistantReply(text, products, complementInvite) {
     const wrap = document.createElement("div");
     wrap.className = "chat-bubble assistant";
     const label = document.createElement("div");
@@ -91,6 +99,7 @@
       const grid = document.createElement("ul");
       grid.className = "product-grid chat-product-grid";
       grid.setAttribute("aria-label", "Products from this answer");
+      var complementPlaced = false;
       products.forEach(function (p) {
         const li = document.createElement("li");
         li.className = "product-card";
@@ -151,8 +160,30 @@
         a.appendChild(cardBody);
         li.appendChild(a);
         grid.appendChild(li);
+        if (
+          complementInvite &&
+          !complementPlaced &&
+          String(p.id) === String(complementInvite.product_id)
+        ) {
+          complementPlaced = true;
+          const inviteLi = document.createElement("li");
+          inviteLi.className = "complement-invite-row";
+          inviteLi.appendChild(appendComplementInviteBlock(complementInvite.text));
+          grid.appendChild(inviteLi);
+        }
       });
+      if (complementInvite && !complementPlaced) {
+        const inviteLi = document.createElement("li");
+        inviteLi.className = "complement-invite-row complement-invite-row--fallback";
+        inviteLi.appendChild(appendComplementInviteBlock(complementInvite.text));
+        grid.appendChild(inviteLi);
+      }
       wrap.appendChild(grid);
+    } else if (complementInvite && complementInvite.text) {
+      const standalone = document.createElement("div");
+      standalone.className = "complement-invite-standalone";
+      standalone.appendChild(appendComplementInviteBlock(complementInvite.text));
+      wrap.appendChild(standalone);
     }
 
     logEl.appendChild(wrap);
@@ -189,7 +220,11 @@
         return;
       }
       if (data.thread_id) setThreadId(data.thread_id);
-      appendAssistantReply(data.reply || "(empty reply)", data.products || []);
+      appendAssistantReply(
+        data.reply || "(empty reply)",
+        data.products || [],
+        data.complement_invite || null
+      );
     } catch (err) {
       appendBubble("assistant", "Network error: " + err);
     } finally {

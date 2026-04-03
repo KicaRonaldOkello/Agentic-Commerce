@@ -61,7 +61,9 @@ a:hover {
 
 .nav {
   display: flex;
-  gap: 1.25rem;
+  flex-wrap: wrap;
+  gap: 0.65rem 1.25rem;
+  justify-content: flex-end;
 }
 
 .main {
@@ -439,6 +441,11 @@ a:hover {
   margin: 0 0 1rem;
   font-size: 0.9375rem;
 }
+.detail-screen {
+  color: var(--muted);
+  margin: -0.5rem 0 1rem;
+  font-size: 0.9rem;
+}
 .detail-short {
   color: var(--muted);
   margin: 0 0 1.5rem;
@@ -572,6 +579,34 @@ a:hover {
   margin-top: 0.65rem;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 0.85rem;
+}
+
+/* Pairing prompt directly under the chosen product card (assistant chat). */
+.chat-bubble.assistant .chat-product-grid .complement-invite-row {
+  grid-column: 1 / -1;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.chat-bubble.assistant .complement-invite {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--accent-dim);
+  background: linear-gradient(
+    135deg,
+    rgba(100, 160, 255, 0.1) 0%,
+    rgba(60, 120, 200, 0.06) 100%
+  );
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--text);
+}
+.chat-bubble.assistant .complement-invite-row--fallback .complement-invite {
+  margin-top: 0.35rem;
+}
+.chat-bubble.assistant .complement-invite-standalone {
+  margin-top: 0.65rem;
 }
 
 .chat-form textarea {

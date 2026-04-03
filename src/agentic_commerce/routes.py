@@ -30,6 +30,15 @@ def _optional_int(raw: str | None) -> int | None:
         return None
 
 
+def _optional_float(raw: str | None) -> float | None:
+    if raw is None or str(raw).strip() == "":
+        return None
+    try:
+        return float(str(raw).strip())
+    except ValueError:
+        return None
+
+
 def _parse_listing_filters() -> dict[str, Any]:
     """Parse GET params for search_products + template / nav."""
     cfg = current_app.config
@@ -44,6 +53,15 @@ def _parse_listing_filters() -> dict[str, Any]:
     elif raw_cat in ("television", "tv", "tvs", "televisions"):
         category_key = "television"
         product_type = "television"
+    elif raw_cat in ("earphones", "earphone", "headphones", "headphone", "buds", "headsets"):
+        category_key = "earphones"
+        product_type = "earphones"
+    elif raw_cat in ("power_bank", "power-bank", "powerbank", "powerbanks"):
+        category_key = "power_bank"
+        product_type = "power_bank"
+    elif raw_cat in ("soundbar", "soundbars", "tv_speaker", "tv-speaker", "tv-speakers"):
+        category_key = "soundbar"
+        product_type = "soundbar"
     else:
         category_key = "all"
         product_type = None
@@ -71,6 +89,7 @@ def _parse_listing_filters() -> dict[str, Any]:
     if sort not in ("name", "price_asc", "price_desc", "rating", "deals"):
         sort = "name"
     in_stock_only = request.args.get("in_stock") in ("1", "on", "true", "yes")
+    screen_inches = _optional_float(request.args.get("screen_inches"))
 
     return {
         "category_key": category_key,
@@ -84,6 +103,7 @@ def _parse_listing_filters() -> dict[str, Any]:
         "q": q,
         "sort": sort,
         "in_stock_only": in_stock_only,
+        "screen_inches": screen_inches,
     }
 
 
@@ -107,6 +127,8 @@ def _nav_kwargs(f: dict[str, Any], *, for_endpoint: str) -> dict[str, Any]:
         out["q"] = f["q"]
     if f["in_stock_only"]:
         out["in_stock"] = "1"
+    if f.get("screen_inches") is not None:
+        out["screen_inches"] = f["screen_inches"]
     return out
 
 
@@ -138,6 +160,7 @@ def products():
         brand=f["brand"] or None,
         q=f["q"] or None,
         in_stock_only=f["in_stock_only"],
+        screen_inches=f.get("screen_inches"),
         sort=f["sort"],
         page=f["page"],
         per_page=f["per_page"],
@@ -158,6 +181,7 @@ def products():
         q=f["q"],
         sort=f["sort"],
         in_stock_only=f["in_stock_only"],
+        screen_inches=f.get("screen_inches"),
         deals_mode=False,
         list_endpoint="catalog.products",
         nav_kwargs=nav,
@@ -179,6 +203,7 @@ def deals():
         brand=f["brand"] or None,
         q=f["q"] or None,
         in_stock_only=True,
+        screen_inches=f.get("screen_inches"),
         sort="deals",
         page=f["page"],
         per_page=f["per_page"],
@@ -199,6 +224,7 @@ def deals():
         q=f["q"],
         sort="deals",
         in_stock_only=True,
+        screen_inches=f.get("screen_inches"),
         deals_mode=True,
         list_endpoint="catalog.deals",
         nav_kwargs=nav,

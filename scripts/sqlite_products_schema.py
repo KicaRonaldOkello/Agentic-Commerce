@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS {PRODUCTS_TABLE} (
     image_attribution TEXT,
     is_duplicate_listing INTEGER NOT NULL DEFAULT 0,
     duplicate_of_id TEXT,
+    screen_diagonal_inches REAL,
     loaded_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -40,6 +41,7 @@ CREATE INDEX IF NOT EXISTS idx_products_price ON {PRODUCTS_TABLE}(price);
 CREATE INDEX IF NOT EXISTS idx_products_availability ON {PRODUCTS_TABLE}(availability_status);
 CREATE INDEX IF NOT EXISTS idx_products_sku ON {PRODUCTS_TABLE}(sku);
 CREATE INDEX IF NOT EXISTS idx_products_slug ON {PRODUCTS_TABLE}(slug);
+CREATE INDEX IF NOT EXISTS idx_products_screen_diagonal ON {PRODUCTS_TABLE}(screen_diagonal_inches);
 """
 
 DROP_SQL = f"DROP TABLE IF EXISTS {PRODUCTS_TABLE};"

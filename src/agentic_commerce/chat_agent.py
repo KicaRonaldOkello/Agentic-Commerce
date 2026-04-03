@@ -1,33 +1,196 @@
-"""LangGraph ReAct agent for Phase 1 shopping assistant (OpenAI; OpenRouter-ready via base URL)."""
+"""Shopping assistant: Phase 3 multi-node LangGraph + product extraction (Phases 1–2 tools)."""
 
 from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Any
 
 from flask import Flask
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
-from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import MemorySaver
-from langgraph.prebuilt import create_react_agent
 
-from agentic_commerce.chat_tools import SHOPPING_TOOLS
+from agentic_commerce.agent_prompts import BROWSE_SYSTEM_PROMPT
+from agentic_commerce.evaluator_agent import build_evaluator_runnable
+from agentic_commerce.shopping_phase3_graph import get_phase3_graph
 
-SYSTEM_PROMPT = """You are a shopping assistant for Agentic Commerce (Uganda-style demo catalog, prices in UGX).
-
-Rules:
-- For any product lists, prices, discounts, stock, or specs, you MUST call the provided tools. Never invent SKUs, prices, or product names.
-- After tools return JSON, explain results in clear, friendly language. Mention product names and UGX prices from the tool output.
-- If search returns no products, say so and suggest broadening filters (e.g. raise budget or try another category).
-- For "best deal" or "on sale" requests, prefer the top_deals tool or search_catalog with sort=deals.
-- Keep answers concise unless the user asks for detail. You may suggest 2–3 follow-up questions.
-- Listed products also appear as clickable cards below your message; summarize in prose without pasting full tables.
-
-Currency: always UGX as shown in tool data."""
+# Backward-compatible name for docs / imports
+SYSTEM_PROMPT = BROWSE_SYSTEM_PROMPT
 
 _checkpointer = MemorySaver()
-_agent_cache: dict[str, Any] = {}
+
+# User chose an item from a prior list (ordinal / colloquial)—used to append complement CTA deterministically.
+_PICK_FROM_LIST_RE = re.compile(
+    r"(?i)\b("
+    r"the\s+(first|second|third|fourth|fifth|last)\b|"
+    r"\b(1st|2nd|3rd|4th|5th)\b|"
+    r"\btake\s+the\b|"
+    r"i'?ll\s+take\b|"
+    r"i\s+think\s+i\s+will\s+take\b|"
+    r"going\s+with\s+the\b|"
+    r"\blast\s+one\b|"
+    r"\bfirst\s+one\b|"
+    r"\blast\s+item\b|"
+    r"\bfirst\s+item\b|"
+    r"\bthis\s+one\b|"
+    r"\bthat\s+one\b"
+    r")"
+)
+
+_COMPLEMENT_CTA_PHRASES = (
+    "say yes",
+    "say **yes**",
+    "list them with ugx prices",
+)
+
+# Shown in the assistant UI below the chosen product card (plain text; no markdown).
+COMPLEMENT_INVITE_UI_TEXT = (
+    "If you’d like, I can suggest complementary items from our catalog that pair with "
+    "this product—say yes and I’ll list them with UGX prices."
+)
+
+
+def _last_human_index(messages: list[BaseMessage]) -> int:
+    for i in range(len(messages) - 1, -1, -1):
+        if isinstance(messages[i], HumanMessage):
+            return i
+    return -1
+
+
+def _effective_tool_name(m: ToolMessage) -> str | None:
+    """LangGraph / LangChain usually set ``name``; fall back to JSON shape if missing."""
+    n = (getattr(m, "name", None) or "").strip()
+    if n:
+        return n
+    raw = _tool_message_body(m.content).strip()
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    if data.get("source_product") and isinstance(data.get("products"), list):
+        return "get_complements"
+    if isinstance(data.get("products"), list) and data.get("total_matching") is not None:
+        return "search_catalog"
+    if isinstance(data.get("products"), list) and data.get("method") == "semantic_search":
+        return "discover_catalog"
+    if data.get("note") and "deal" in str(data.get("note", "")).lower() and isinstance(
+        data.get("products"), list
+    ):
+        return "top_deals"
+    # Single-product detail payload (get_product_details)
+    if data.get("id") and data.get("slug") and not data.get("error"):
+        if data.get("description") is not None or data.get("specifications") is not None:
+            return "get_product_details"
+    return None
+
+
+def _tool_names_after_human(messages: list[BaseMessage], last_human_idx: int) -> list[str]:
+    if last_human_idx < 0:
+        return []
+    out: list[str] = []
+    for m in messages[last_human_idx + 1 :]:
+        if isinstance(m, ToolMessage):
+            eff = _effective_tool_name(m)
+            if eff:
+                out.append(eff)
+    return out
+
+
+def _user_signals_list_pick(user_text: str) -> bool:
+    t = (user_text or "").strip()
+    if not t:
+        return False
+    if _PICK_FROM_LIST_RE.search(t):
+        return True
+    if re.search(r"(?i)\b(which|pick|choose|selected)\b.+\b(list|options|above)\b", t):
+        return True
+    return False
+
+
+def _should_append_complement_cta(
+    messages: list[BaseMessage], *, user_message: str, reply: str
+) -> bool:
+    """After details for a list pick, ensure the user always sees an explicit path to get_complements."""
+    if not _user_signals_list_pick(user_message):
+        return False
+    rlow = reply.lower()
+    if any(p.lower() in rlow for p in _COMPLEMENT_CTA_PHRASES):
+        return False
+    idx = _last_human_index(messages)
+    if idx < 0:
+        return False
+    names = _tool_names_after_human(messages, idx)
+    if "get_product_details" not in names:
+        return False
+    if "get_complements" in names:
+        return False
+    # Confirm a successful product-detail tool payload in this turn.
+    for m in messages[idx + 1 :]:
+        if not isinstance(m, ToolMessage):
+            continue
+        eff = _effective_tool_name(m)
+        if eff != "get_product_details":
+            continue
+        raw = _tool_message_body(m.content).strip()
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(data, dict) and not data.get("error") and data.get("id"):
+            return True
+    return False
+
+
+def _anchor_product_id_from_detail_tools(
+    messages: list[BaseMessage], last_human_idx: int
+) -> str | None:
+    """First successful get_product_details ``id`` in this turn (for UI placement)."""
+    if last_human_idx < 0:
+        return None
+    for m in messages[last_human_idx + 1 :]:
+        if not isinstance(m, ToolMessage):
+            continue
+        if _effective_tool_name(m) != "get_product_details":
+            continue
+        raw = _tool_message_body(m.content).strip()
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(data, dict) and not data.get("error") and data.get("id"):
+            return str(data["id"])
+    return None
+
+
+def _reply_with_complement_cta(reply: str) -> str:
+    suffix = (
+        "\n\nIf you’d like, I can suggest complementary items from our catalog that pair with "
+        "this product—**say yes** and I’ll list them with UGX prices."
+    )
+    return (reply.rstrip() + suffix).strip()
+
+
+def _text_from_message(msg: BaseMessage) -> str:
+    """Plain text for human/assistant messages (skip tool-call-only AI turns)."""
+    if isinstance(msg, AIMessage):
+        if getattr(msg, "tool_calls", None):
+            return ""
+        return _format_ai_content(msg)
+    c = msg.content
+    if isinstance(c, str):
+        return c.strip()
+    if isinstance(c, list):
+        parts: list[str] = []
+        for block in c:
+            if isinstance(block, dict) and block.get("type") == "text":
+                parts.append(str(block.get("text", "")))
+            elif isinstance(block, str):
+                parts.append(block)
+        return "\n".join(parts).strip()
+    return str(c).strip()
 
 
 def _format_ai_content(msg: AIMessage) -> str:
@@ -133,61 +296,85 @@ def extract_products_from_last_turn(messages: list[BaseMessage]) -> list[dict[st
     return list(by_id.values())
 
 
-def build_agent_graph(*, model: str, api_key: str, base_url: str | None) -> Any:
-    """Create a compiled LangGraph ReAct agent (cached per model+base_url)."""
-    cache_key = f"{model}|{base_url or ''}"
-    if cache_key in _agent_cache:
-        return _agent_cache[cache_key]
+def format_conversation_tail_for_evaluator(
+    messages: list[BaseMessage],
+    *,
+    max_messages: int = 16,
+    max_line_chars: int = 900,
+) -> str:
+    """Compact transcript for the intent gate (human + plain AI only; no tool payloads)."""
+    if not messages:
+        return ""
+    lines: list[str] = []
+    for m in messages[-max_messages:]:
+        if isinstance(m, HumanMessage):
+            t = _text_from_message(m)[:max_line_chars]
+            if t:
+                lines.append(f"User: {t}")
+        elif isinstance(m, AIMessage):
+            t = _text_from_message(m)[:max_line_chars]
+            if t:
+                lines.append(f"Assistant: {t}")
+    return "\n".join(lines)
 
-    kwargs: dict[str, Any] = {
-        "model": model,
-        "api_key": api_key,
-        "temperature": 0.2,
-    }
-    if base_url:
-        kwargs["base_url"] = base_url
 
-    llm = ChatOpenAI(**kwargs)
-    graph = create_react_agent(
-        llm,
-        SHOPPING_TOOLS,
-        prompt=SYSTEM_PROMPT,
-        checkpointer=_checkpointer,
-    )
-    _agent_cache[cache_key] = graph
-    return graph
+def prior_conversation_for_evaluator(app: Flask, *, thread_id: str) -> str:
+    """Load checkpointed thread history (before the current request) for shopping-intent classification."""
+    agent = app.extensions.get("shopping_agent")
+    if agent is None or not (thread_id or "").strip():
+        return ""
+    try:
+        snap = agent.get_state({"configurable": {"thread_id": thread_id.strip()}})
+        if snap is None:
+            return ""
+        vals = getattr(snap, "values", None) or {}
+        msgs = vals.get("messages") or []
+        if not isinstance(msgs, list):
+            return ""
+        return format_conversation_tail_for_evaluator(msgs)
+    except Exception:
+        app.logger.debug("prior_conversation_for_evaluator failed", exc_info=True)
+        return ""
 
 
 def init_shopping_agent(app: Flask) -> None:
-    """Attach compiled graph to app.extensions or disable assistant."""
-    # Reduce surprise LangSmith prompts in local dev
+    """Attach Phase 3 graph + intent evaluator to app.extensions."""
     os.environ.setdefault("LANGCHAIN_TRACING_V2", "false")
 
     key = (app.config.get("OPENAI_API_KEY") or "").strip()
     if not key:
         app.extensions["shopping_agent"] = None
+        app.extensions["shopping_intent_evaluator"] = None
         return
 
-    graph = build_agent_graph(
+    base_url = (app.config.get("OPENAI_BASE_URL") or "").strip() or None
+    graph = get_phase3_graph(
         model=app.config["OPENAI_MODEL"],
         api_key=key,
-        base_url=(app.config.get("OPENAI_BASE_URL") or "").strip() or None,
+        base_url=base_url,
+        checkpointer=_checkpointer,
     )
     app.extensions["shopping_agent"] = graph
+
+    eval_model = app.config.get("OPENAI_EVALUATOR_MODEL") or app.config["OPENAI_MODEL"]
+    app.extensions["shopping_intent_evaluator"] = build_evaluator_runnable(
+        model=eval_model,
+        api_key=key,
+        base_url=base_url,
+    )
 
 
 def invoke_agent(
     app: Flask, *, thread_id: str, user_message: str
 ) -> dict[str, Any]:
-    """Run one user turn; must be called inside Flask request context (for tools).
+    """Run one user turn (router → specialist); must run inside Flask request context for tools.
 
-    Returns ``reply`` (assistant text) and ``products`` (card-shaped dicts with slug for links).
+    Returns ``reply``, ``products`` (card-shaped dicts), and optional ``complement_invite``
+    ``{ "text", "product_id" }`` when the UI should show the pairing prompt under that card.
     """
     agent = app.extensions.get("shopping_agent")
     if agent is None:
         raise RuntimeError("assistant_disabled")
-
-    from langchain_core.messages import HumanMessage
 
     config = {"configurable": {"thread_id": thread_id}}
     result = agent.invoke(
@@ -195,7 +382,20 @@ def invoke_agent(
         config,
     )
     msgs = result["messages"]
+    reply = extract_reply_text(msgs)
+    complement_invite: dict[str, str] | None = None
+    if _should_append_complement_cta(msgs, user_message=user_message, reply=reply):
+        hidx = _last_human_index(msgs)
+        anchor_id = _anchor_product_id_from_detail_tools(msgs, hidx)
+        if anchor_id:
+            complement_invite = {
+                "text": COMPLEMENT_INVITE_UI_TEXT,
+                "product_id": anchor_id,
+            }
+        else:
+            reply = _reply_with_complement_cta(reply)
     return {
-        "reply": extract_reply_text(msgs),
+        "reply": reply,
         "products": extract_products_from_last_turn(msgs),
+        "complement_invite": complement_invite,
     }

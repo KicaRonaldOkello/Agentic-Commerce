@@ -11,8 +11,18 @@ from typing import Any
 LIST_SELECT = """
     id, sku, name, slug, brand, product_type, tier, currency,
     price, compare_at_price, stock_quantity, availability_status,
-    rating_average, review_count, short_description, thumbnail
+    rating_average, review_count, short_description, thumbnail,
+    screen_diagonal_inches
 """
+
+CATALOG_PRODUCT_TYPES: frozenset[str] = frozenset(
+    {"phone", "television", "earphones", "power_bank", "soundbar"}
+)
+
+
+def screen_size_bucket(inches: float | int) -> int:
+    """Integer inch bucket (5.6 → 5); matches SQLite CAST(diagonal AS INTEGER) for positive sizes."""
+    return int(float(inches))
 
 
 def get_connection(db_path: Path) -> sqlite3.Connection:
@@ -69,11 +79,12 @@ def _build_search_where(
     brand: str | None,
     q: str | None,
     in_stock_only: bool,
+    screen_inches: float | int | None = None,
 ) -> tuple[str, list[Any]]:
     wheres: list[str] = ["1 = 1"]
     params: list[Any] = []
 
-    if product_type in ("phone", "television"):
+    if product_type in CATALOG_PRODUCT_TYPES:
         wheres.append("product_type = ?")
         params.append(product_type)
     if price_min is not None:
@@ -94,6 +105,11 @@ def _build_search_where(
         params.extend([term, term])
     if in_stock_only:
         wheres.append("availability_status = 'in_stock'")
+    if screen_inches is not None:
+        bucket = screen_size_bucket(screen_inches)
+        wheres.append("screen_diagonal_inches IS NOT NULL")
+        wheres.append("CAST(screen_diagonal_inches AS INTEGER) = ?")
+        params.append(bucket)
 
     return " AND ".join(wheres), params
 
@@ -126,6 +142,7 @@ def search_products(
     brand: str | None = None,
     q: str | None = None,
     in_stock_only: bool = False,
+    screen_inches: float | int | None = None,
     sort: str = "name",
     page: int = 1,
     per_page: int = 16,
@@ -147,6 +164,7 @@ def search_products(
         brand=brand,
         q=q,
         in_stock_only=in_stock_only,
+        screen_inches=screen_inches,
     )
     order_sql = _order_clause(sort)
 
@@ -173,6 +191,57 @@ def search_products(
     return ProductListResult(items=rows, total=total, page=page, per_page=per_page)
 
 
+def fetch_list_rows_by_ids_ordered(
+    db_path: Path,
+    ids_ordered: list[str],
+    *,
+    product_type: str | None = None,
+    price_min: int | None = None,
+    price_max: int | None = None,
+    tier: str | None = None,
+    brand: str | None = None,
+    in_stock_only: bool = False,
+    screen_inches: float | int | None = None,
+    limit: int = 25,
+) -> list[dict[str, Any]]:
+    """List rows for ids that pass catalog filters, preserving first-seen order from ``ids_ordered``."""
+    if not ids_ordered:
+        return []
+    limit = max(1, min(int(limit), 100))
+    in_ph = ",".join("?" * len(ids_ordered))
+    id_clause = f"id IN ({in_ph})"
+    filter_where, filter_params = _build_search_where(
+        product_type=product_type,
+        price_min=price_min,
+        price_max=price_max,
+        tier=tier,
+        brand=brand,
+        q=None,
+        in_stock_only=in_stock_only,
+        screen_inches=screen_inches,
+    )
+    full_where = f"({id_clause}) AND ({filter_where})"
+    params: list[Any] = list(ids_ordered) + filter_params
+    sql = f"""
+        SELECT {LIST_SELECT.strip()}
+        FROM products
+        WHERE {full_where}
+    """
+    with get_connection(db_path) as conn:
+        cur = conn.execute(sql, params)
+        rows = [dict(r) for r in cur.fetchall()]
+    by_id = {r["id"]: r for r in rows}
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for pid in ids_ordered:
+        if pid in by_id and pid not in seen:
+            seen.add(pid)
+            out.append(by_id[pid])
+            if len(out) >= limit:
+                break
+    return out
+
+
 def fetch_products(
     db_path: Path,
     *,
@@ -197,7 +266,7 @@ def fetch_product_by_slug(db_path: Path, slug: str) -> dict[str, Any] | None:
             rating_average, review_count, short_description, description,
             key_features_json, specifications_json, whats_in_box_json, attributes_json,
             thumbnail, images_json, image_attribution,
-            is_duplicate_listing, duplicate_of_id
+            is_duplicate_listing, duplicate_of_id, screen_diagonal_inches
         FROM products
         WHERE slug = ?
         LIMIT 1
@@ -220,7 +289,7 @@ def fetch_product_by_id(db_path: Path, product_id: str) -> dict[str, Any] | None
             rating_average, review_count, short_description, description,
             key_features_json, specifications_json, whats_in_box_json, attributes_json,
             thumbnail, images_json, image_attribution,
-            is_duplicate_listing, duplicate_of_id
+            is_duplicate_listing, duplicate_of_id, screen_diagonal_inches
         FROM products
         WHERE id = ?
         LIMIT 1
@@ -254,6 +323,7 @@ def row_to_api_summary(row: dict[str, Any]) -> dict[str, Any]:
         "review_count": row["review_count"],
         "short_description": row["short_description"],
         "thumbnail": row["thumbnail"],
+        "screen_diagonal_inches": row.get("screen_diagonal_inches"),
     }
 
 

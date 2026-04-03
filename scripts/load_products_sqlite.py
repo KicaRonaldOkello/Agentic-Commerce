@@ -29,16 +29,32 @@ INSERT INTO {PRODUCTS_TABLE} (
     rating_average, review_count, short_description, description,
     key_features_json, specifications_json, whats_in_box_json, attributes_json,
     thumbnail, images_json, image_attribution,
-    is_duplicate_listing, duplicate_of_id
+    is_duplicate_listing, duplicate_of_id, screen_diagonal_inches
 ) VALUES (
     ?, ?, ?, ?, ?, ?, ?, ?, ?,
     ?, ?, ?, ?,
     ?, ?, ?, ?,
     ?, ?, ?, ?,
     ?, ?, ?,
-    ?, ?
+    ?, ?, ?
 )
 """
+
+
+def _screen_diagonal_inches(obj: dict) -> float | None:
+    attrs = obj.get("attributes")
+    if not isinstance(attrs, dict):
+        return None
+    raw = attrs.get("screenInches")
+    if raw is None:
+        return None
+    try:
+        v = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if v <= 0:
+        return None
+    return v
 
 
 def row_from_json(obj: dict) -> tuple:
@@ -69,6 +85,7 @@ def row_from_json(obj: dict) -> tuple:
         obj.get("imageAttribution"),
         1 if obj.get("isDuplicateListing") else 0,
         obj.get("duplicateOfId"),
+        _screen_diagonal_inches(obj),
     )
 
 

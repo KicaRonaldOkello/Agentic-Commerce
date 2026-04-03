@@ -35,6 +35,12 @@ def _parse_category() -> str | None:
         return "phone"
     if raw in ("television", "tv", "tvs", "televisions"):
         return "television"
+    if raw in ("earphones", "earphone", "headphones", "headphone", "buds", "headsets"):
+        return "earphones"
+    if raw in ("power_bank", "power-bank", "powerbank", "powerbanks"):
+        return "power_bank"
+    if raw in ("soundbar", "soundbars", "tv_speaker", "tv-speaker", "tv-speakers"):
+        return "soundbar"
     return None
 
 
@@ -44,6 +50,16 @@ def _parse_int_arg(name: str) -> int | None:
         return None
     try:
         return int(v.strip())
+    except ValueError:
+        return None
+
+
+def _parse_float_arg(name: str) -> float | None:
+    v = request.args.get(name, type=str)
+    if v is None or v.strip() == "":
+        return None
+    try:
+        return float(v.strip())
     except ValueError:
         return None
 
@@ -69,6 +85,7 @@ def api_list_products():
     sort = request.args.get("sort", "name", type=str) or "name"
     if sort not in ("name", "price_asc", "price_desc", "rating", "deals"):
         sort = "name"
+    screen_inches = _parse_float_arg("screen_inches")
 
     result = search_products(
         db_path,
@@ -79,6 +96,7 @@ def api_list_products():
         brand=brand,
         q=q,
         in_stock_only=in_stock_only,
+        screen_inches=screen_inches,
         sort=sort,
         page=page,
         per_page=per_page,
@@ -128,6 +146,24 @@ def api_chat():
     thread_id = (data.get("thread_id") or "").strip() or str(uuid.uuid4())
 
     try:
+        from agentic_commerce.chat_agent import prior_conversation_for_evaluator
+        from agentic_commerce.evaluator_agent import evaluate_shopping_intent
+
+        prior = prior_conversation_for_evaluator(current_app, thread_id=thread_id)
+        allowed, refusal = evaluate_shopping_intent(
+            current_app, message, prior_conversation=prior or None
+        )
+        if not allowed:
+            return jsonify(
+                {
+                    "thread_id": thread_id,
+                    "reply": refusal,
+                    "products": [],
+                    "complement_invite": None,
+                    "evaluator_blocked": True,
+                }
+            )
+
         from agentic_commerce.chat_agent import invoke_agent
 
         out = invoke_agent(current_app, thread_id=thread_id, user_message=message)
@@ -149,5 +185,6 @@ def api_chat():
             "thread_id": thread_id,
             "reply": out["reply"],
             "products": out["products"],
+            "complement_invite": out.get("complement_invite"),
         }
     )
