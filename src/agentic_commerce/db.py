@@ -8,6 +8,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+LIST_SELECT = """
+    id, sku, name, slug, brand, product_type, tier, currency,
+    price, compare_at_price, stock_quantity, availability_status,
+    rating_average, review_count, short_description, thumbnail
+"""
+
 
 def get_connection(db_path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path, detect_types=sqlite3.PARSE_DECLTYPES)
@@ -37,33 +43,119 @@ class ProductListResult:
         return self.page < self.total_pages
 
 
-def fetch_products(
+def _parse_json_row(d: dict[str, Any]) -> None:
+    json_map = (
+        ("key_features_json", "key_features"),
+        ("specifications_json", "specifications"),
+        ("whats_in_box_json", "whats_in_box"),
+        ("attributes_json", "attributes"),
+        ("images_json", "images"),
+    )
+    for src, dest in json_map:
+        raw = d.get(src)
+        if isinstance(raw, str) and raw.strip():
+            try:
+                d[dest] = json.loads(raw)
+            except json.JSONDecodeError:
+                pass
+
+
+def _build_search_where(
+    *,
+    product_type: str | None,
+    price_min: int | None,
+    price_max: int | None,
+    tier: str | None,
+    brand: str | None,
+    q: str | None,
+    in_stock_only: bool,
+) -> tuple[str, list[Any]]:
+    wheres: list[str] = ["1 = 1"]
+    params: list[Any] = []
+
+    if product_type in ("phone", "television"):
+        wheres.append("product_type = ?")
+        params.append(product_type)
+    if price_min is not None:
+        wheres.append("price >= ?")
+        params.append(price_min)
+    if price_max is not None:
+        wheres.append("price <= ?")
+        params.append(price_max)
+    if tier in ("low", "mid", "high"):
+        wheres.append("tier = ?")
+        params.append(tier)
+    if brand and brand.strip():
+        wheres.append("LOWER(brand) LIKE ?")
+        params.append(f"%{brand.strip().lower()}%")
+    if q and q.strip():
+        term = f"%{q.strip().lower()}%"
+        wheres.append("(LOWER(name) LIKE ? OR LOWER(short_description) LIKE ?)")
+        params.extend([term, term])
+    if in_stock_only:
+        wheres.append("availability_status = 'in_stock'")
+
+    return " AND ".join(wheres), params
+
+
+def _order_clause(sort: str) -> str:
+    if sort == "deals":
+        return """CASE WHEN compare_at_price IS NOT NULL AND compare_at_price > price
+                THEN 0 ELSE 1 END ASC,
+            CASE WHEN compare_at_price IS NOT NULL AND compare_at_price > price
+                THEN (compare_at_price - price) * 1.0 / compare_at_price END DESC,
+            rating_average DESC,
+            price ASC,
+            name COLLATE NOCASE"""
+    if sort == "price_asc":
+        return "price ASC, name COLLATE NOCASE"
+    if sort == "price_desc":
+        return "price DESC, name COLLATE NOCASE"
+    if sort == "rating":
+        return "rating_average DESC, review_count DESC, name COLLATE NOCASE"
+    return "brand COLLATE NOCASE, name COLLATE NOCASE"
+
+
+def search_products(
     db_path: Path,
     *,
-    category: str | None,
+    product_type: str | None = None,
+    price_min: int | None = None,
+    price_max: int | None = None,
+    tier: str | None = None,
+    brand: str | None = None,
+    q: str | None = None,
+    in_stock_only: bool = False,
+    sort: str = "name",
     page: int = 1,
     per_page: int = 16,
 ) -> ProductListResult:
     """
-    category: 'phone', 'television', or None for all.
+    Filter catalog rows with optional text search on name and short_description.
+
+    sort: name | price_asc | price_desc | rating | deals (see docs/DEAL_POLICY.md)
     """
     per_page = max(1, min(per_page, 100))
+    if sort not in ("name", "price_asc", "price_desc", "rating", "deals"):
+        sort = "name"
 
-    where = ""
-    params: list[Any] = []
-    if category in ("phone", "television"):
-        where = "WHERE product_type = ?"
-        params.append(category)
+    where_sql, params = _build_search_where(
+        product_type=product_type,
+        price_min=price_min,
+        price_max=price_max,
+        tier=tier,
+        brand=brand,
+        q=q,
+        in_stock_only=in_stock_only,
+    )
+    order_sql = _order_clause(sort)
 
-    count_sql = f"SELECT COUNT(*) AS c FROM products {where}"
+    count_sql = f"SELECT COUNT(*) AS c FROM products WHERE {where_sql}"
     list_sql = f"""
-        SELECT
-            id, sku, name, slug, brand, product_type, tier, currency,
-            price, compare_at_price, stock_quantity, availability_status,
-            rating_average, review_count, short_description, thumbnail
+        SELECT {LIST_SELECT.strip()}
         FROM products
-        {where}
-        ORDER BY brand COLLATE NOCASE, name COLLATE NOCASE
+        WHERE {where_sql}
+        ORDER BY {order_sql}
         LIMIT ? OFFSET ?
     """
 
@@ -79,6 +171,22 @@ def fetch_products(
         rows = [dict(r) for r in cur.fetchall()]
 
     return ProductListResult(items=rows, total=total, page=page, per_page=per_page)
+
+
+def fetch_products(
+    db_path: Path,
+    *,
+    category: str | None,
+    page: int = 1,
+    per_page: int = 16,
+) -> ProductListResult:
+    """Backward-compatible wrapper: category = product_type."""
+    return search_products(
+        db_path,
+        product_type=category,
+        page=page,
+        per_page=per_page,
+    )
 
 
 def fetch_product_by_slug(db_path: Path, slug: str) -> dict[str, Any] | None:
@@ -100,18 +208,59 @@ def fetch_product_by_slug(db_path: Path, slug: str) -> dict[str, Any] | None:
     if not row:
         return None
     d = dict(row)
-    json_map = (
-        ("key_features_json", "key_features"),
-        ("specifications_json", "specifications"),
-        ("whats_in_box_json", "whats_in_box"),
-        ("attributes_json", "attributes"),
-        ("images_json", "images"),
-    )
-    for src, dest in json_map:
-        raw = d.get(src)
-        if isinstance(raw, str) and raw.strip():
-            try:
-                d[dest] = json.loads(raw)
-            except json.JSONDecodeError:
-                pass
+    _parse_json_row(d)
     return d
+
+
+def fetch_product_by_id(db_path: Path, product_id: str) -> dict[str, Any] | None:
+    sql = """
+        SELECT
+            id, sku, name, slug, brand, category, product_type, tier, currency,
+            price, compare_at_price, stock_quantity, availability_status,
+            rating_average, review_count, short_description, description,
+            key_features_json, specifications_json, whats_in_box_json, attributes_json,
+            thumbnail, images_json, image_attribution,
+            is_duplicate_listing, duplicate_of_id
+        FROM products
+        WHERE id = ?
+        LIMIT 1
+    """
+    with get_connection(db_path) as conn:
+        cur = conn.execute(sql, (product_id,))
+        row = cur.fetchone()
+    if not row:
+        return None
+    d = dict(row)
+    _parse_json_row(d)
+    return d
+
+
+def row_to_api_summary(row: dict[str, Any]) -> dict[str, Any]:
+    """Stable JSON shape for list endpoints."""
+    return {
+        "id": row["id"],
+        "sku": row["sku"],
+        "name": row["name"],
+        "slug": row["slug"],
+        "brand": row["brand"],
+        "product_type": row["product_type"],
+        "tier": row["tier"],
+        "currency": row["currency"],
+        "price": row["price"],
+        "compare_at_price": row["compare_at_price"],
+        "stock_quantity": row["stock_quantity"],
+        "availability_status": row["availability_status"],
+        "rating_average": row["rating_average"],
+        "review_count": row["review_count"],
+        "short_description": row["short_description"],
+        "thumbnail": row["thumbnail"],
+    }
+
+
+def row_to_api_detail(d: dict[str, Any]) -> dict[str, Any]:
+    """Full product for API detail; strips raw *_json keys if parsed copies exist."""
+    out = {k: v for k, v in d.items() if not k.endswith("_json")}
+    for k in ("key_features", "specifications", "whats_in_box", "attributes", "images"):
+        if k in d:
+            out[k] = d[k]
+    return out

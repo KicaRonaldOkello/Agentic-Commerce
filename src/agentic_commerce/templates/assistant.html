@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block title %}Assistant{% endblock %}
+{% block body %}
+<section class="assistant-page">
+  <header class="assistant-header">
+    <h1>Shopping assistant</h1>
+    <p class="assistant-lead">
+      Powered by <strong>LangGraph</strong> (ReAct) and <strong>OpenAI</strong>. The assistant uses tools to read your SQLite catalog—prices and products are not guessed.
+      {% if model %}<span class="model-tag">Model: {{ model }}</span>{% endif %}
+    </p>
+    {% if not assistant_enabled %}
+    <div class="assistant-banner warn">
+      Set <code>OPENAI_API_KEY</code> in the environment and restart the server to enable chat.
+      Optional: <code>OPENAI_MODEL</code> (default <code>gpt-4o-mini</code>), <code>OPENAI_BASE_URL</code> for OpenRouter later.
+    </div>
+    {% endif %}
+    <p class="assistant-links"><a href="{{ url_for('catalog.products', category='all') }}">Browse products</a> · <a href="{{ url_for('catalog.deals') }}">Best deals</a></p>
+  </header>
+
+  <div id="chat-log" class="chat-log" aria-live="polite"></div>
+
+  <form id="chat-form" class="chat-form" {% if not assistant_enabled %}aria-disabled="true"{% endif %}>
+    <label class="sr-only" for="chat-input">Message</label>
+    <textarea id="chat-input" name="message" rows="3" placeholder="Try: Phones under 500000 UGX, or best TV deals…" {% if not assistant_enabled %}disabled{% endif %} required></textarea>
+    <div class="chat-actions">
+      <button type="submit" class="btn primary" {% if not assistant_enabled %}disabled{% endif %}>Send</button>
+      <button type="button" class="btn" id="chat-new-thread" {% if not assistant_enabled %}disabled{% endif %}>New conversation</button>
+    </div>
+  </form>
+  <p id="chat-status" class="chat-status" role="status"></p>
+</section>
+
+<script>
+(function () {
+  const STORAGE_KEY = "agentic_commerce_chat_thread_id";
+  const logEl = document.getElementById("chat-log");
+  const form = document.getElementById("chat-form");
+  const input = document.getElementById("chat-input");
+  const statusEl = document.getElementById("chat-status");
+  const newThreadBtn = document.getElementById("chat-new-thread");
+  const enabled = {{ "true" if assistant_enabled else "false" }};
+  const productUrlTemplate = {{ url_for("catalog.product_detail", slug="__SLUG__") | tojson }};
+
+  function getThreadId() {
+    return localStorage.getItem(STORAGE_KEY) || "";
+  }
+  function setThreadId(id) {
+    if (id) localStorage.setItem(STORAGE_KEY, id);
+    else localStorage.removeItem(STORAGE_KEY);
+  }
+
+  function productDetailHref(slug) {
+    return productUrlTemplate.split("__SLUG__").join(encodeURIComponent(slug));
+  }
+
+  function formatUgx(n) {
+    if (n == null || n === "") return "—";
+    var x = Number(n);
+    if (Number.isNaN(x)) return "—";
+    return "UGX " + Math.round(x).toLocaleString("en-US");
+  }
+
+  function appendBubble(role, text) {
+    const wrap = document.createElement("div");
+    wrap.className = "chat-bubble " + role;
+    const label = document.createElement("div");
+    label.className = "chat-bubble-label";
+    label.textContent = role === "user" ? "You" : "Assistant";
+    const body = document.createElement("div");
+    body.className = "chat-bubble-body";
+    body.textContent = text;
+    wrap.appendChild(label);
+    wrap.appendChild(body);
+    logEl.appendChild(wrap);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function appendAssistantReply(text, products) {
+    const wrap = document.createElement("div");
+    wrap.className = "chat-bubble assistant";
+    const label = document.createElement("div");
+    label.className = "chat-bubble-label";
+    label.textContent = "Assistant";
+    const body = document.createElement("div");
+    body.className = "chat-bubble-body";
+    body.textContent = text;
+    wrap.appendChild(label);
+    wrap.appendChild(body);
+
+    if (products && products.length) {
+      const grid = document.createElement("ul");
+      grid.className = "product-grid chat-product-grid";
+      grid.setAttribute("aria-label", "Products from this answer");
+      products.forEach(function (p) {
+        const li = document.createElement("li");
+        li.className = "product-card";
+        const a = document.createElement("a");
+        a.className = "card-link";
+        a.href = productDetailHref(p.slug);
+        const imgWrap = document.createElement("div");
+        imgWrap.className = "card-image";
+        if (p.compare_at_price != null && p.price != null && p.compare_at_price > p.price) {
+          const pill = document.createElement("span");
+          pill.className = "deal-pill";
+          pill.textContent = "Sale";
+          imgWrap.appendChild(pill);
+        }
+        const img = document.createElement("img");
+        img.src = p.thumbnail || "";
+        img.alt = "";
+        img.loading = "lazy";
+        img.width = 400;
+        img.height = 400;
+        imgWrap.appendChild(img);
+        const cardBody = document.createElement("div");
+        cardBody.className = "card-body";
+        const brand = document.createElement("span");
+        brand.className = "card-brand";
+        brand.textContent = p.brand || "";
+        const title = document.createElement("h2");
+        title.className = "card-title";
+        title.textContent = p.name || "";
+        const desc = document.createElement("p");
+        desc.className = "card-desc";
+        var sd = p.short_description || "";
+        desc.textContent = sd.length > 140 ? sd.slice(0, 140) + "…" : sd;
+        const footer = document.createElement("div");
+        footer.className = "card-footer";
+        const priceStack = document.createElement("div");
+        priceStack.className = "price-stack";
+        const priceEl = document.createElement("span");
+        priceEl.className = "price";
+        priceEl.textContent = formatUgx(p.price);
+        priceStack.appendChild(priceEl);
+        if (p.compare_at_price != null && p.price != null && p.compare_at_price > p.price) {
+          const was = document.createElement("span");
+          was.className = "was-price";
+          was.textContent = formatUgx(p.compare_at_price);
+          priceStack.appendChild(was);
+        }
+        const tier = document.createElement("span");
+        tier.className = "tier";
+        tier.textContent = p.tier || "";
+        footer.appendChild(priceStack);
+        footer.appendChild(tier);
+        cardBody.appendChild(brand);
+        cardBody.appendChild(title);
+        cardBody.appendChild(desc);
+        cardBody.appendChild(footer);
+        a.appendChild(imgWrap);
+        a.appendChild(cardBody);
+        li.appendChild(a);
+        grid.appendChild(li);
+      });
+      wrap.appendChild(grid);
+    }
+
+    logEl.appendChild(wrap);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function setBusy(b) {
+    form.querySelector("button[type=submit]").disabled = b || !enabled;
+    input.disabled = b || !enabled;
+    newThreadBtn.disabled = b || !enabled;
+    statusEl.textContent = b ? "Thinking…" : "";
+  }
+
+  form.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    if (!enabled) return;
+    const text = input.value.trim();
+    if (!text) return;
+    appendBubble("user", text);
+    input.value = "";
+    setBusy(true);
+    try {
+      const res = await fetch("{{ url_for('api.api_chat') }}", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify({
+          message: text,
+          thread_id: getThreadId() || undefined,
+        }),
+      });
+      const data = await res.json().catch(function () { return {}; });
+      if (!res.ok) {
+        appendBubble("assistant", data.error || ("Error " + res.status));
+        return;
+      }
+      if (data.thread_id) setThreadId(data.thread_id);
+      appendAssistantReply(data.reply || "(empty reply)", data.products || []);
+    } catch (err) {
+      appendBubble("assistant", "Network error: " + err);
+    } finally {
+      setBusy(false);
+    }
+  });
+
+  newThreadBtn.addEventListener("click", function () {
+    setThreadId("");
+    logEl.innerHTML = "";
+    statusEl.textContent = "Started a new conversation.";
+  });
+})();
+</script>
+{% endblock %}

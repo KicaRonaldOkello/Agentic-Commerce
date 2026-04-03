@@ -135,6 +135,32 @@ The dev server listens on port **5000** by default (`serve-catalog` / `python -m
 
 Open [http://127.0.0.1:5000/](http://127.0.0.1:5000/) in a browser. For production, use a proper WSGI server and set a strong `SECRET_KEY`.
 
+### Browse, filters, and best deals
+
+- **Products** (`/products`): category, tier, min/max price (UGX), brand substring, search on name/description, sort (name, price, rating, **best deal order**), per-page size, optional **in stock only**.
+- **Best deals** (`/deals`): same filters where relevant; always **in stock** and sorted by the [deal policy](docs/DEAL_POLICY.md) (discount %, then rating, then price).
+- **Deal policy (plain text)** (`/deal-policy`): serves `docs/DEAL_POLICY.md`.
+
+### JSON API (Phase 0 tools)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/products` | Paginated list; query params mirror the browse filters (`category`, `price_min`, `price_max`, `tier`, `brand`, `q`, `sort`, `page`, `per_page`, `in_stock_only`). |
+| GET | `/api/products/<id or slug>` | One product; tries `id` first, then `slug`. |
+| POST | `/api/chat` | Phase 1 assistant: JSON `{ "message": "...", "thread_id": "optional-uuid" }` → `{ "thread_id", "reply" }`. Requires `OPENAI_API_KEY`. |
+
+### Shopping assistant (LangGraph + OpenAI)
+
+1. Set **`OPENAI_API_KEY`** in the environment and restart the server.
+2. Open **`/assistant`** in the browser (also linked from the header).
+3. Optional: **`OPENAI_MODEL`** (default `gpt-4o-mini`), **`OPENAI_BASE_URL`** (e.g. later for OpenRouter: `https://openrouter.ai/api/v1`).
+
+The agent is a **LangGraph** `create_react_agent` graph with tools: `search_catalog`, `get_product_details`, `top_deals` (see `src/agentic_commerce/chat_tools.py`). Conversation memory uses **`thread_id`** (stored in `localStorage` on the assistant page).
+
+## Roadmap (Phases 2+)
+
+Further work (RAG discovery, richer LangGraph nodes, complements): **[docs/SHOPPING_ASSISTANT_ROADMAP.md](docs/SHOPPING_ASSISTANT_ROADMAP.md)**.
+
 ## Project layout (short)
 
 | Path | Role |
@@ -143,4 +169,6 @@ Open [http://127.0.0.1:5000/](http://127.0.0.1:5000/) in a browser. For producti
 | `data/catalog.sqlite` | SQLite DB used at runtime |
 | `scripts/load_products_sqlite.py` | Create schema + load JSONL |
 | `scripts/sqlite_products_schema.py` | Table DDL shared by loaders |
-| `src/agentic_commerce/` | Flask app (`create_app`), routes, templates |
+| `src/agentic_commerce/` | Flask app, catalog + API + assistant (`chat_agent.py`, `chat_tools.py`) |
+| `docs/SHOPPING_ASSISTANT_ROADMAP.md` | Phased plan for the shopping chatbot |
+| `docs/DEAL_POLICY.md` | How “best deals” are ranked in SQL |

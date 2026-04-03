@@ -9,6 +9,10 @@ description = "Agentic commerce demo: catalog data, SQLite loaders, Flask storef
 requires-python = ">=3.10"
 dependencies = [
     "flask>=3,<4",
+    "langchain-core>=1.2.25",
+    "langchain-openai>=1.1.12",
+    "langgraph>=1.1.4",
+    "python-dotenv>=1.2.2",
 ]
 
 [project.scripts]

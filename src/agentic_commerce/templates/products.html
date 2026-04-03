@@ -1,29 +1,85 @@
 {% extends "base.html" %}
-{% block title %}Products{% endblock %}
+{% block title %}{% if deals_mode %}Best deals{% else %}Products{% endif %}{% endblock %}
 {% block body %}
 <div class="toolbar">
-  <h1 class="page-title">Products</h1>
-  <form class="filters" method="get" action="{{ url_for('catalog.products') }}">
+  <h1 class="page-title">{% if deals_mode %}Best deals{% else %}Products{% endif %}</h1>
+  {% if deals_mode %}
+  <p class="deals-lead">In-stock items ranked by discount %, then rating. <a href="{{ url_for('catalog.deal_policy') }}" target="_blank" rel="noopener">Deal policy</a></p>
+  {% endif %}
+</div>
+
+<form class="filter-form" method="get" action="{% if deals_mode %}{{ url_for('catalog.deals') }}{% else %}{{ url_for('catalog.products') }}{% endif %}">
+  <div class="filter-grid">
     <label>
       Category
-      <select name="category" onchange="this.form.submit()">
+      <select name="category">
         <option value="all" {% if category == 'all' %}selected{% endif %}>All</option>
         <option value="phone" {% if category == 'phone' %}selected{% endif %}>Phones</option>
         <option value="television" {% if category == 'television' %}selected{% endif %}>Televisions</option>
       </select>
     </label>
     <label>
+      Tier
+      <select name="tier">
+        <option value="" {% if not tier %}selected{% endif %}>Any</option>
+        <option value="low" {% if tier == 'low' %}selected{% endif %}>Low</option>
+        <option value="mid" {% if tier == 'mid' %}selected{% endif %}>Mid</option>
+        <option value="high" {% if tier == 'high' %}selected{% endif %}>High</option>
+      </select>
+    </label>
+    <label>
+      Min price (UGX)
+      <input type="number" name="price_min" min="0" step="1" placeholder="Any" value="{{ price_min if price_min is not none else '' }}">
+    </label>
+    <label>
+      Max price (UGX)
+      <input type="number" name="price_max" min="0" step="1" placeholder="Any" value="{{ price_max if price_max is not none else '' }}">
+    </label>
+    <label class="filter-span-2">
+      Brand contains
+      <input type="search" name="brand" placeholder="e.g. Samsung" value="{{ brand }}">
+    </label>
+    <label class="filter-span-2">
+      Search name / description
+      <input type="search" name="q" placeholder="Keywords…" value="{{ q }}">
+    </label>
+    {% if not deals_mode %}
+    <label>
+      Sort
+      <select name="sort">
+        <option value="name" {% if sort == 'name' %}selected{% endif %}>Name (A–Z)</option>
+        <option value="price_asc" {% if sort == 'price_asc' %}selected{% endif %}>Price ↑</option>
+        <option value="price_desc" {% if sort == 'price_desc' %}selected{% endif %}>Price ↓</option>
+        <option value="rating" {% if sort == 'rating' %}selected{% endif %}>Rating</option>
+        <option value="deals" {% if sort == 'deals' %}selected{% endif %}>Best deal order</option>
+      </select>
+    </label>
+    {% endif %}
+    <label>
       Per page
-      <select name="per_page" onchange="this.form.submit()">
+      <select name="per_page">
         {% for n in per_page_choices %}
         <option value="{{ n }}" {% if n == per_page %}selected{% endif %}>{{ n }}</option>
         {% endfor %}
       </select>
     </label>
-    <input type="hidden" name="page" value="1">
-    <noscript><button type="submit" class="btn small">Apply</button></noscript>
-  </form>
-</div>
+    {% if not deals_mode %}
+    <label class="filter-checkbox">
+      <input type="checkbox" name="in_stock" value="1" {% if in_stock_only %}checked{% endif %}>
+      In stock only
+    </label>
+    {% endif %}
+  </div>
+  <input type="hidden" name="page" value="1">
+  <div class="filter-actions">
+    <button type="submit" class="btn primary">Apply filters</button>
+    {% if deals_mode %}
+    <a class="btn" href="{{ url_for('catalog.deals') }}">Reset deals view</a>
+    {% else %}
+    <a class="btn" href="{{ url_for('catalog.products') }}">Reset</a>
+    {% endif %}
+  </div>
+</form>
 
 <p class="meta">{{ result.total }} items · page {{ result.page }} of {{ result.total_pages }}</p>
 
@@ -33,6 +89,9 @@
   <li class="product-card">
     <a class="card-link" href="{{ url_for('catalog.product_detail', slug=p.slug) }}">
       <div class="card-image">
+        {% if deals_mode and p.compare_at_price and p.compare_at_price > p.price %}
+        <span class="deal-pill">Sale</span>
+        {% endif %}
         <img src="{{ p.thumbnail }}" alt="" loading="lazy" width="400" height="400">
       </div>
       <div class="card-body">
@@ -40,7 +99,12 @@
         <h2 class="card-title">{{ p.name }}</h2>
         <p class="card-desc">{{ p.short_description[:140] }}{% if p.short_description|length > 140 %}…{% endif %}</p>
         <div class="card-footer">
-          <span class="price">{{ p.price | ugx }}</span>
+          <div class="price-stack">
+            <span class="price">{{ p.price | ugx }}</span>
+            {% if p.compare_at_price and p.compare_at_price > p.price %}
+            <span class="was-price">{{ p.compare_at_price | ugx }}</span>
+            {% endif %}
+          </div>
           <span class="tier">{{ p.tier }}</span>
         </div>
       </div>
@@ -51,13 +115,13 @@
 
 <nav class="pagination" aria-label="Pagination">
   {% if result.has_prev %}
-  <a class="btn" rel="prev" href="{{ url_for('catalog.products', category=category, page=result.page - 1, per_page=per_page) }}">Previous</a>
+  <a class="btn" rel="prev" href="{{ catalog_page_url(list_endpoint, result.page - 1, nav_kwargs) }}">Previous</a>
   {% else %}
   <span class="btn disabled">Previous</span>
   {% endif %}
   <span class="page-indicator">{{ result.page }} / {{ result.total_pages }}</span>
   {% if result.has_next %}
-  <a class="btn" rel="next" href="{{ url_for('catalog.products', category=category, page=result.page + 1, per_page=per_page) }}">Next</a>
+  <a class="btn" rel="next" href="{{ catalog_page_url(list_endpoint, result.page + 1, nav_kwargs) }}">Next</a>
   {% else %}
   <span class="btn disabled">Next</span>
   {% endif %}
