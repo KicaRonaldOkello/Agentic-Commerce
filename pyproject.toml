@@ -18,6 +18,8 @@ dependencies = [
 
 [project.scripts]
 serve-catalog = "agentic_commerce.cli:main"
+# Vercel Flask discovery: WSGI application named ``app``
+app = "agentic_commerce.vercel_entry:app"
 
 [dependency-groups]
 dev = [
