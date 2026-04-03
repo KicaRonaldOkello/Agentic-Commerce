@@ -13,8 +13,11 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parent.parent.parent
 
 
-# Repo root .env (OPENAI_API_KEY, etc.) — loaded before Config reads os.environ.
-load_dotenv(_repo_root() / ".env")
+# Local .env (optional). Never committed on Vercel — use Project → Environment Variables there.
+# ``override=False`` keeps host-provided secrets (e.g. Vercel) if the key is already set.
+_root = _repo_root()
+load_dotenv(_root / ".env", override=False)
+load_dotenv(Path.cwd() / ".env", override=False)
 
 
 class Config:
